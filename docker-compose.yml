@@ -1,0 +1,66 @@
+version: '3.3'
+services:
+  bee_service:
+    image: bee_service_img
+    container_name: bee_service
+    build:
+      context: ./BEE
+      dockerfile: ./Dockerfile
+    env_file: ./BEE/.env
+    restart: unless-stopped
+    command: bash -c "python manage.py migrate && gunicorn -b 0.0.0.0:4180 -w 2 main.wsgi"
+    expose:
+      - '4180'
+    volumes:
+      - .:/usr/src/app
+    ports:
+      - '4180:4180'
+    networks:
+      - ingress
+
+  redis:
+    image: 'redis:alpine'
+    container_name: redis
+    restart: unless-stopped
+    expose:
+      - 6379
+
+  # celery_worker:
+  #   image: bee_service_img
+  #   container_name: celery_worker
+  #   depends_on:
+  #     - bee_service
+  #     - redis
+  #   restart: unless-stopped
+  #   build:
+  #     context: ./BEE
+  #   command: bash -c "celery -A bee worker -l DEBUG"
+
+  # celery_beat:
+  #   image: bee_service_img
+  #   container_name: celery_beat
+  #   depends_on:
+  #     - bee_service
+  #     - redis
+  #   restart: unless-stopped
+  #   build:
+  #     context: ./BEE
+  #   command: bash -c "celery -A bee beat -l DEBUG"
+
+  fee:
+    container_name: fee_service
+    build:
+      context: ./FEE
+      dockerfile: ./Dockerfile
+    env_file: ./FEE/.env
+    ports:
+      - 8080:80
+    volumes:
+      - './FEE/:/opt/app'
+    networks:
+      - ingress
+
+networks:
+  ingress:
+    external: true
+    name: ${DOCKER_NETWORK}
