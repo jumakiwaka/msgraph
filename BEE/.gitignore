@@ -1,3 +1,5 @@
 
 dev_env/
 venv/
+
+*.sqlite3
