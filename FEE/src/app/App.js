@@ -9,7 +9,7 @@ import {
 import { useSelector } from 'react-redux';
 import { Container } from 'react-bootstrap';
 import Dashboard from '../pages/Dashboard';
-import LandingPage from '../pages/LandingPage';
+import Login from './Login';
 import './App.scss';
 
 /**
@@ -21,7 +21,7 @@ function App() {
     <Container className="main">
       <Router>
         <Routes>
-          <Route path="/login" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/" element={<PrivateRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
           </Route>
