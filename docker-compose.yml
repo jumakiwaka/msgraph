@@ -14,9 +14,22 @@ services:
     volumes:
       - .:/usr/src/app
     ports:
-      - '4180:4180'
+      - '4181:4180'
     networks:
       - ingress
+
+  db_service:
+    image: postgres:12
+    volumes:
+      - msgraph-db-data:/var/lib/postgresql/data/pgdata
+    env_file:
+      - .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    networks:
+      - ingress
+    expose:
+      - 5432
 
   redis:
     image: 'redis:alpine'
@@ -24,28 +37,34 @@ services:
     restart: unless-stopped
     expose:
       - 6379
+    networks:
+      - ingress
 
-  # celery_worker:
-  #   image: bee_service_img
-  #   container_name: celery_worker
-  #   depends_on:
-  #     - bee_service
-  #     - redis
-  #   restart: unless-stopped
-  #   build:
-  #     context: ./BEE
-  #   command: bash -c "celery -A bee worker -l DEBUG"
+  celery_worker:
+    image: bee_service_img
+    container_name: celery_worker
+    depends_on:
+      - bee_service
+      - redis
+    restart: unless-stopped
+    build:
+      context: ./BEE
+    command: bash -c "celery -A main worker -l DEBUG"
+    networks:
+      - ingress
 
-  # celery_beat:
-  #   image: bee_service_img
-  #   container_name: celery_beat
-  #   depends_on:
-  #     - bee_service
-  #     - redis
-  #   restart: unless-stopped
-  #   build:
-  #     context: ./BEE
-  #   command: bash -c "celery -A bee beat -l DEBUG"
+  celery_beat:
+    image: bee_service_img
+    container_name: celery_beat
+    depends_on:
+      - bee_service
+      - redis
+    restart: unless-stopped
+    build:
+      context: ./BEE
+    command: bash -c "celery -A main beat -l DEBUG"
+    networks:
+      - ingress
 
   fee:
     container_name: fee_service
@@ -59,6 +78,9 @@ services:
       - './FEE/:/opt/app'
     networks:
       - ingress
+
+volumes:
+  msgraph-db-data:
 
 networks:
   ingress:
