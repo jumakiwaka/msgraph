@@ -36,7 +36,7 @@ function Login(props) {
             setIsLoading(false);
             dispatch(setAuthUser(res.data.result));
             setToken(res.data.result);
-            navigate('/dashboard');
+            navigate('/');
           } else {
             setIsLoading(false);
             const error = {
