@@ -1,10 +1,14 @@
+from os import access
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny
 from django.http import JsonResponse
-from django.contrib.auth.models import User
-from rest_framework.authtoken.models import Token
-from dashboard.models import ConnectedAccount, IntegratedAccount
-
+from dashboard.utils import refresh_access_token
+from dashboard.services import integrate_account
+from auth.services import create_update_user, create_update_user_token
+from dashboard.utils import build_msal_app, get_graph_user
+from dashboard.selectors import get_user_account
+from main.settings import SCOPE, REDIRECT_URI
+from common.wrappers.response_wrapper import ResponseWrapper
 
 
 class LoginAPIVIEW(GenericAPIView):
@@ -14,52 +18,80 @@ class LoginAPIVIEW(GenericAPIView):
     def post(cls, request):
         data = request.data
 
-        access_token = data.get("accessToken")
-        expires_on = data.get("expiresOn")
-        account = data.get("account")
-        username = account.get("userName")
-        name = account.get("name")
-        fname, lname = name.split(" ")
+        if "error" in request.GET:
+            status_code = 400
+            response = ResponseWrapper(
+                status_code=status_code, error="could not get code from msal"
+            ).fail
+            return JsonResponse(response, status=status_code)
 
-        user, created = User.objects.get_or_create(
-            username=username,
-        )
+        if data.get("code"):
+            result = build_msal_app().acquire_token_by_authorization_code(
+                data.get("code"),
+                scopes=SCOPE,
+                redirect_uri=REDIRECT_URI,
+            )
 
-        user.first_name = fname
-        user.last_name = lname
-        user.email = username
-        user.save()
+            if "error" in result:
+                status_code = 400
+                response = ResponseWrapper(
+                    status_code=status_code, error=result.get("error_description")
+                ).fail
+                return JsonResponse(response, status=status_code)
+            else:
+                access_token = result["access_token"]
+                expires_in = result["expires_in"]
+                refresh_token = result["refresh_token"]
 
-        connected_account, created = ConnectedAccount.objects.get_or_create(
-            user=user
-        )
-        connected_account.email = username
-        connected_account.access_token = access_token
-        connected_account.access_token_exp_date = expires_on
-        connected_account.save()
+                # Get user details using microsoft graph api call
+                ms_user_data = get_graph_user(access_token)
+                user = create_update_user(ms_user_data)
+                connect_success = integrate_account(
+                    user, access_token, expires_in, refresh_token
+                )
+                user_token = create_update_user_token(user=user)
 
-        integrated_account, created = IntegratedAccount.objects.get_or_create(user=user, connected_account=connected_account)
+                result = {"key": user_token.key, "user_profile": ms_user_data}
+                status_code = 200
+                response = ResponseWrapper(
+                    status_code=status_code, message="Login success", result=result
+                ).success
 
-        user_token, created = Token.objects.get_or_create(user=user)
+                return JsonResponse(response, status=status_code)
 
-        response = {
-            "token": user_token.key
-        }
+        else:
+            response = {"status": "error", "error": "no code provided"}
+            status_code = 400
+            response = ResponseWrapper(
+                status_code=status_code, error="No code provided"
+            ).fail
+            return JsonResponse(response, status=status_code)
 
 
-        return JsonResponse(response)
 
+class AuthStatusAPIView(GenericAPIView):
 
+    @classmethod
+    def get(cls, request):
+        # by this point the drf token is valid, now we need to validate if ms token is still valid as well.
+        user = request.user
+        connected_account = get_user_account(user=user)
+        if connected_account:
+            access_token = refresh_access_token(account=connected_account)
+            result = bool(access_token)
 
+            response = ResponseWrapper(status_code=200, result=result, message='auth status check success').success
+
+            return JsonResponse(response, status=response.get("status_code"))
+
+        else:
+            response = ResponseWrapper(status_code=401, error="user not connected").fail
+            return JsonResponse(response, status=response.get("status_code"))
 
 class LogoutAPIView(GenericAPIView):
-
     @classmethod
     def post(cls, request):
 
         data = request.data
 
-
         return data
-
-

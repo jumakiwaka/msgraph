@@ -32,13 +32,14 @@ class IntegratedAccount(models.Model):
 
 
 class AccountIncomingMailStats(models.Model):
-    connected_account = models.ForeignKey(ConnectedAccount, on_delete=models.CASCADE, null=True)
+    connected_account = models.ForeignKey(
+        ConnectedAccount, on_delete=models.CASCADE, null=True
+    )
     conversation_id = models.TextField(blank=False, null=False, default="")
     message_id = models.TextField(blank=False, null=False, default="")
     sent_date_time = models.DateTimeField(null=True, blank=False, default=None)
     is_read = models.BooleanField(blank=False, null=False, default=False)
     is_read_date_time = models.DateTimeField(null=True, blank=False, default=None)
-    # read_time_difference = models.IntegerField(null=True, blank=False, default=None)
     read_time_taken = models.FloatField(null=True, blank=False, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -48,7 +49,9 @@ class AccountIncomingMailStats(models.Model):
 
 
 class AccountOutgoingMailStats(models.Model):
-    connected_account = models.ForeignKey(ConnectedAccount, on_delete=models.CASCADE, null=True)
+    connected_account = models.ForeignKey(
+        ConnectedAccount, on_delete=models.CASCADE, null=True
+    )
     conversation_id = models.TextField(blank=False, null=False, default="")
     message_id = models.TextField(blank=False, null=False, default="")
     sent_date_time = models.DateTimeField(null=True, blank=False, default=None)

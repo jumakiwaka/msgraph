@@ -17,27 +17,13 @@ from main.settings import (
 from dashboard.models import (
     AccountIncomingMailStats,
     AccountOutgoingMailStats,
-    ConnectedAccount,
 )
 from common.logging import get_logger
+import os
 
 logger = get_logger(__name__)
 
-TIME_ZONE = pytz.timezone("Africa/Nairobi")
-
-
-def load_cache(session):
-    """loads from msal cache"""
-    cache = msal.SerializableTokenCache()
-    if session.get("token_cache"):
-        cache.deserialize(session["token_cache"])
-    return cache
-
-
-def save_cache(session, cache):
-    """saves to msal cache"""
-    if cache.has_state_changed:
-        session["token_cache"] = cache.serialize()
+TIME_ZONE = pytz.timezone(os.environ.get("timezone"))
 
 
 def build_msal_app(cache=None, authority=None):
@@ -57,84 +43,61 @@ def build_auth_url(authority=None, scopes=None, state=None):
     )
 
 
-def get_token_from_cache(session, scope):
-    """get accesstoken from cache"""
-    # This web app maintains one cache per session
-    cache = load_cache(session)
-    cca = build_msal_app(cache=cache)
-    accounts = cca.get_accounts()
-    # So all account(s) belong to the current signed-in user
-    if accounts:
-        result = cca.acquire_token_silent(scope, account=accounts[0])
-        save_cache(session, cache)
-        return result
+def get_graph_user(access_token):
+    """graph api to microsoft to retrieve user details"""
 
-
-def microsoft_graph_call(access_token):
-    """graph api to microsoft"""
-    # Use token to call downstream service
-    # graph_data = requests.get(
-    #     url='https://graph.microsoft.com/v1.0//me/messages' + '?$search="isRead:true"&$top="1000"$count=true',
-    #     headers={'Authorization': 'Bearer ' + access_token},
-    #     ).json()
-
-    graph_data = requests.get(
-        url=GRAPH_ENDPOINT,
+    user_data = requests.get(
+        url=f"{GRAPH_ENDPOINT}/me",
         headers={"Authorization": "Bearer " + access_token},
     ).json()
 
-    if "error" not in graph_data:
-        return {
-            "Login": "success",
-            "UserId": graph_data.get("id"),
-            "UserName": graph_data.get("displayName"),
-            "AccessToken": access_token,
-        }
+    logger.info(user_data)
 
-    else:
-        return {"error": graph_data}
+    return user_data
 
 
-def get_mails_api(access_token, url):
+def graph_api_query(access_token, url):
     """graph api to microsoft"""
-    # Use token to call downstream service
     graph_data = requests.get(
         url=url,
         headers={"Authorization": "Bearer " + access_token},
     ).json()
-    logger.info("Returning mails response")
+
+    logger.info(f"Returning mails response")
     return graph_data
 
 
-def get_mails(account, to_date, access_token):
-    from_date = str(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+def get_mails(account, from_date, access_token):
+    to_date = str(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
     if account:
         url = (
             "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?"
-            "$filter=((sentDateTime le "
-            + to_date
-            + ") and (sentDateTime ge "
+            "$filter=((sentDateTime ge "
             + from_date
+            + ") and (sentDateTime le "
+            + to_date
             + "))&$select=id,conversationId,sentDateTime&$top=999&$orderby=sentDateTime"
         )
 
         while url is not None:
-            sent_emails = get_mails_api(access_token, url)
+            sent_emails = graph_api_query(access_token, url)
             if "error" in sent_emails:
+                logger.info("error retrieving sent mails")
                 return False
             for email in sent_emails["value"]:
                 mail = AccountOutgoingMailStats.objects.filter(
-                    account=account, message_id=email["id"]
+                    connected_account=account, message_id=email["id"]
                 ).first()
                 if not mail:
                     outgoing_mail = AccountOutgoingMailStats.objects.create(
-                        account=account,
+                        connected_account=account,
                         message_id=email["id"],
                         conversation_id=email["conversationId"],
                         sent_date_time=email["sentDateTime"],
                     )
                     matching_incoming_mail = AccountIncomingMailStats.objects.filter(
-                        account=account, conversation_id=email["conversationId"]
+                        connected_account=account,
+                        conversation_id=email["conversationId"],
                     ).first()
                     if matching_incoming_mail:
                         time_diff = (
@@ -152,25 +115,26 @@ def get_mails(account, to_date, access_token):
 
         url = (
             "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?"
-            "$filter=((receivedDateTime le "
-            + to_date
-            + ") and (receivedDateTime ge "
+            "$filter=((receivedDateTime ge "
             + from_date
+            + ") and (receivedDateTime le "
+            + to_date
             + "))&$expand=SingleValueExtendedProperties($filter=(Id%20eq%20'Integer%200x1081'))"
             "&$top=999&$orderby=receivedDateTime"
         )
 
         while url is not None:
-            inbox_emails = get_mails_api(access_token, url)
+            inbox_emails = graph_api_query(access_token, url)
             if "error" in inbox_emails:
+                logger.info("error retrieving inbox mails")
                 return False
             for email in inbox_emails["value"]:
                 mail = AccountIncomingMailStats.objects.filter(
-                    account=account, message_id=email["id"]
+                    connected_account=account, message_id=email["id"]
                 ).first()
                 if not mail:
                     mail = AccountIncomingMailStats.objects.create(
-                        account=account,
+                        connected_account=account,
                         message_id=email["id"],
                         conversation_id=email["conversationId"],
                         sent_date_time=email["receivedDateTime"],
@@ -203,13 +167,8 @@ def get_mails(account, to_date, access_token):
                     mail.save()
 
                 if "singleValueExtendedProperties@odata.context" in email:
-                    # #message_id = re.search("messages(\'(.*)')/singleValueExtendedProperties", email['singleValueExtendedProperties@odata.context'])
-                    # start = email['singleValueExtendedProperties@odata.context'].find("messages(\'")
-                    # end = email['singleValueExtendedProperties@odata.context'].find("')/singleValueExtendedProperties")
-                    # if start!= -1 and end!= -1:
-                    #     message_id = email['singleValueExtendedProperties@odata.context'][start+9:end]
                     associated_sent_mails = AccountOutgoingMailStats.objects.filter(
-                        account=account,
+                        connected_account=account,
                         conversation_id=mail.conversation_id,
                         sent_date_time__gt=parse(email["sentDateTime"]),
                     )
@@ -248,20 +207,20 @@ def get_all_read_emails(account, access_token):
             "$filter=isRead eq true&$top=999"
         )
         while url is not None:
-            unread_emails = get_mails_api(access_token, url)
-            if "error" in unread_emails:
+            read_emails = graph_api_query(access_token, url)
+            if "error" in read_emails:
                 return False
-            for email in unread_emails["value"]:
+            for email in read_emails["value"]:
                 mail = AccountIncomingMailStats.objects.filter(
-                    account=account, message_id=email["id"], is_read=False
+                    connected_account=account, message_id=email["id"], is_read=False
                 ).first()
                 if mail:
                     mail.is_read = True
                     mail.is_read_date_time = datetime.now(tz=TIME_ZONE)
                     mail.save()
             url = (
-                unread_emails["@odata.nextLink"]
-                if "@odata.nextLink" in unread_emails
+                read_emails["@odata.nextLink"]
+                if "@odata.nextLink" in read_emails
                 else None
             )
     return True
@@ -302,7 +261,9 @@ def calculate_response_time(account):
 
 def calculate_send_ratio(account):
     if account:
-        receive_count = AccountIncomingMailStats.objects.filter(connected_account=account).count()
+        receive_count = AccountIncomingMailStats.objects.filter(
+            connected_account=account
+        ).count()
         response_count = AccountOutgoingMailStats.objects.filter(
             connected_account=account
         ).count()
@@ -315,16 +276,35 @@ def calculate_send_ratio(account):
 
 def count_today_emails(account):
     if account:
-        return AccountIncomingMailStats.objects.filter(
-            sent_date_time__month=datetime.now().month,
-            sent_date_time__year=datetime.now().year,
-            sent_date_time__day=datetime.now().day,
-            connected_account=account,
-        ).count()
+        today_inbox_mail = AccountIncomingMailStats.objects.filter(
+                sent_date_time__month=datetime.now().month,
+                sent_date_time__year=datetime.now().year,
+                sent_date_time__day=datetime.now().day,
+                connected_account=account,
+            ).count()
+        today_sent_mail = AccountOutgoingMailStats.objects.filter(
+                    sent_date_time__month=datetime.now().month,
+                    sent_date_time__year=datetime.now().year,
+                    sent_date_time__day=datetime.now().day,
+                    connected_account=account,
+                ).count()
+        all_today_mail = today_inbox_mail + today_sent_mail
+        return all_today_mail
     return None
 
 
-def refresh_access_token(account):
+def count_all_mails(account):
+    if account:
+        all_inbox_mails = AccountIncomingMailStats.objects.filter(
+                connected_account=account,
+            ).count()
+        all_outbox_mails = AccountOutgoingMailStats.objects.filter(connected_account=account).count()
+        
+        return all_inbox_mails + all_outbox_mails
+    return None
+
+
+def refresh_access_token(account) -> str:
     time_format = "%Y-%d-%m %H:%M:%S"
     initial_time = datetime.strptime(
         account.access_token_expire_date.strftime("%Y-%d-%m %H:%M:%S"), time_format
@@ -336,9 +316,10 @@ def refresh_access_token(account):
     if expire_time > 59:
         result = build_msal_app(cache=None).acquire_token_by_refresh_token(
             refresh_token=account.refresh_token,
-            # Misspelled scope would cause an HTTP 400 error here
             scopes=SCOPE,
         )
+        if "error" in result:
+            return False # more elegant implementation would be to invalidate the drf auth token for the user
         account.access_token = result["access_token"]
         account.refresh_token = result["refresh_token"]
         account.access_token_expire_date = datetime.now()

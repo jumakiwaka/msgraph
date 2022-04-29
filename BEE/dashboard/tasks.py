@@ -8,8 +8,7 @@ logger = get_logger(__name__)
 def periodic_task():
     from dashboard.models import IntegratedAccount
     from dashboard.utils import get_mails, get_all_read_emails, refresh_access_token
-    from datetime import datetime, timedelta
-    from django.db.transaction import atomic
+    from datetime import datetime
 
     try:
         integrated_accounts = IntegratedAccount.objects.all()
@@ -21,11 +20,13 @@ def periodic_task():
             ):
                 logger.info(f"Starting to sync account for {account}")
                 access_token = refresh_access_token(account.connected_account)
-                to_date = str(
-                    (datetime.now() - timedelta(1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                from_date = str(
+                    datetime.now()
+                    .replace(year=datetime.now().year - 2)
+                    .strftime("%Y-%m-%dT%H:%M:%SZ")
                 )
                 job_date_time = datetime.now()
-                get_mails(account.connected_account, to_date, access_token)
+                get_mails(account.connected_account, from_date, access_token)
                 get_all_read_emails(account.connected_account, access_token)
                 account.connected_account.last_job_run = job_date_time
                 account.connected_account.save()
@@ -38,21 +39,20 @@ def periodic_task():
 
 
 @shared_task
-def sync_task(id):
+def sync_task(account_id):
     from dashboard.models import ConnectedAccount
     from dashboard.utils import get_mails
     from datetime import datetime
 
     try:
-        account = ConnectedAccount.objects.filter(id=id).first()
+        account = ConnectedAccount.objects.filter(id=account_id).first()
         if account:
-            # time.sleep(60)
-            to_date = str(
+            from_date = str(
                 datetime.now()
                 .replace(year=datetime.now().year - 2)
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
             )
-            get_mails(account, to_date, account.access_token)
+            get_mails(account, from_date, account.access_token)
             account.is_sync_running = False
             account.is_sync_completed = True
             account.save()
