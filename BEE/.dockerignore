@@ -1,0 +1,24 @@
+/.idea
+*.pyc
+*.sqlite3
+/media
+/.vscode
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.vs
+*.json
+*.sqlite
+# C extensions
+*.so
+
+# Environments
+venv/
+dev_env/
+prod_env/
+ENV/
+env.bak/
+venv.bak/
+prod_env/
