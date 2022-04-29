@@ -7,15 +7,18 @@ import WelcomeText from '../WelcomeText';
 import { Row, Col, Card } from 'react-bootstrap';
 import Loader from '../Loader';
 import { login } from '../../lib';
+import { useSessionStorage } from '../../hooks';
 import './login.scss';
 import ErrorHandler from '../ErrorHandler';
 
-function LandingPage(props) {
+function Login(props) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const [, setToken] = useSessionStorage('token');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState();
+  const code = searchParams.get('code');
 
   useEffect(() => {
     const authCode = searchParams.get('code');
@@ -25,11 +28,14 @@ function LandingPage(props) {
         code: authCode,
       };
 
-      login(payload)
+      const loginPromise = login(payload);
+
+      loginPromise
         .then((res) => {
           if (res.status === 200) {
             setIsLoading(false);
-            dispatch(setAuthUser(res.data));
+            dispatch(setAuthUser(res.data.result));
+            setToken(res.data.result);
             navigate('/dashboard');
           } else {
             setIsLoading(false);
@@ -47,7 +53,7 @@ function LandingPage(props) {
           setError(err.response || err);
         });
     }
-  }, [searchParams.get('code')]);
+  }, []);
 
   if (isLoading) return <Loader />;
   if (error) return <ErrorHandler error={error} />;
@@ -74,4 +80,4 @@ function LandingPage(props) {
   );
 }
 
-export default LandingPage;
+export default Login;

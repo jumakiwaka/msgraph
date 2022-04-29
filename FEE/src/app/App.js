@@ -6,11 +6,12 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { Container } from 'react-bootstrap';
 import Dashboard from '../pages/Dashboard';
 import Login from './Login';
+import { useIsUserLoggedIn } from '../hooks';
 import './App.scss';
+import Loader from './Loader';
 
 /**
  * Handles application level routing.
@@ -23,7 +24,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<PrivateRoute />}>
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route index element={<Dashboard />} />
           </Route>
         </Routes>
       </Router>
@@ -34,8 +35,11 @@ function App() {
 /** Middleware for private routes. */
 const PrivateRoute = () => {
   const location = useLocation();
-  const user = useSelector((state) => state.authUser.value);
-  return user ? (
+  const { isLoading, isLoggedIn } = useIsUserLoggedIn();
+
+  if (isLoading) return <Loader />;
+
+  return isLoggedIn ? (
     <Outlet />
   ) : (
     <Navigate to="/login" state={{ from: location }} />

@@ -16,19 +16,17 @@ class ErrorHandler extends Component {
       }
     }
     return (
-      <>
-        <Alert color="warning" className="mt-4 mb-4">
-          <h4>{statusText}</h4>
-          <p>{this.props.message || message}</p>
-          <p>
-            <small>{status}</small>
-          </p>
+      <Alert color="warning" className="mt-4 mb-4">
+        <h4>{statusText}</h4>
+        <p>{this.props.message || message}</p>
+        <p>
+          <small>{status}</small>
+        </p>
 
-          <Link to="/">
-            <Button variant="outline-primary">Go Home</Button>
-          </Link>
-        </Alert>
-      </>
+        <Link to="/">
+          <Button variant="outline-primary">Go Home</Button>
+        </Link>
+      </Alert>
     );
   }
 }

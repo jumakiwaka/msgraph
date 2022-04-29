@@ -1,6 +1,6 @@
 import { config } from '../../config';
 
-function intl_number_format(num) {
+function intlNumberFormat(num) {
   const numValue = num || 0;
 
   return Intl.NumberFormat(config.supportedLocales, {
@@ -8,4 +8,4 @@ function intl_number_format(num) {
   }).format(numValue);
 }
 
-export { intl_number_format };
+export { intlNumberFormat };

@@ -3,9 +3,12 @@ RUN npm install webpack -g
 
 
 RUN mkdir -p /opt/app
-COPY . /opt/app
+COPY ./package.json /
+COPY ./package-lock.json /
+RUN npm ci
+RUN ls /
+COPY / /opt/app
 WORKDIR /opt/app/
-RUN npm ci --silent
 RUN npm run build
 
 FROM nginx:1.21.6 as nginx

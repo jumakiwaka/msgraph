@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button, Image } from 'react-bootstrap';
 import MSlogo from '../assets/images/ms-icon.png';
 import { config } from '../config';
