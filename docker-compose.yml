@@ -30,6 +30,8 @@ services:
       - ingress
     expose:
       - 5432
+    ports:
+      - 5435:5432
 
   redis:
     image: 'redis:alpine'
